@@ -11,13 +11,13 @@ interface DashboardLayoutProps {
 }
 
 export default function DashboardLayout({ children, role }: DashboardLayoutProps) {
-  const config = roleConfig[role] ?? { nav: [], label: role };
+  const config    = roleConfig[role] ?? { nav: [], label: role };
   const navigation = config.nav;
-  const roleLabel = config.label;
+  const roleLabel  = config.label;
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   return (
-    <div className="min-h-screen" style={{ background: "#f1f5f9" }}>
+    <div className="min-h-screen bg-slate-100">
       <Sidebar
         navigation={navigation}
         role={role}
@@ -30,8 +30,11 @@ export default function DashboardLayout({ children, role }: DashboardLayoutProps
         role={role}
         roleLabel={roleLabel}
       />
+      {/* pt-16 = header height, lg:ml-64 = sidebar width */}
       <main className="lg:ml-64 pt-16 min-h-screen">
-        <div className="p-6 max-w-[1600px]">{children}</div>
+        <div className="p-6">
+          {children}
+        </div>
       </main>
     </div>
   );
