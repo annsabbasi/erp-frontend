@@ -23,7 +23,7 @@ export default function IncomeSourcesPage() {
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-6">
         <ChartCard title="Revenue Mix (February)" description="Distribution by income source">
-          <ERPPieChart data={pieData} formatTooltip={(v) => `$${v.toLocaleString()}`} />
+          <ERPPieChart data={pieData} formatValue={(v) => `$${v.toLocaleString()}`} />
         </ChartCard>
 
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">

@@ -78,7 +78,7 @@ export default function RevenueManagerDashboard() {
         </ChartCard>
 
         <ChartCard title="Revenue Mix (Feb)" description="By source">
-          <ERPPieChart data={revenueBySource} formatTooltip={(v) => `$${v.toLocaleString()}`} />
+          <ERPPieChart data={revenueBySource} formatValue={(v) => `$${v.toLocaleString()}`} />
         </ChartCard>
       </div>
 

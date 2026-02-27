@@ -88,7 +88,7 @@ export default function FinanceOfficerDashboard() {
         </ChartCard>
 
         <ChartCard title="Expense Distribution" description="By category (Feb)">
-          <ERPPieChart data={expenseCategories} formatTooltip={(v) => `$${v.toLocaleString()}`} />
+          <ERPPieChart data={expenseCategories} formatValue={(v) => `$${v.toLocaleString()}`} />
         </ChartCard>
       </div>
 

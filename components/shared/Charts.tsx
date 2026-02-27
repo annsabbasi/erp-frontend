@@ -60,7 +60,7 @@ export function ERPAreaChart({
         <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
         <XAxis dataKey={xKey} tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
         <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} tickFormatter={formatY} />
-        <Tooltip contentStyle={TT_STYLE} formatter={(v: number) => [formatTooltip ? formatTooltip(v) : v.toLocaleString()]} />
+        <Tooltip contentStyle={TT_STYLE} formatter={(value: unknown) => { const v = Number(value); return [formatTooltip ? formatTooltip(v) : v.toLocaleString()]; }} />
         <Legend wrapperStyle={{ fontSize: 12, paddingTop: 12 }} />
         {dataKeys.map((dk, i) => (
           <Area
@@ -91,7 +91,7 @@ export function ERPBarChart({
         <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" vertical={false} />
         <XAxis dataKey={xKey} tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
         <YAxis tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} tickFormatter={formatY} />
-        <Tooltip contentStyle={TT_STYLE} formatter={(v: number) => [formatTooltip ? formatTooltip(v) : v.toLocaleString()]} cursor={{ fill: "#f8fafc" }} />
+        <Tooltip contentStyle={TT_STYLE} formatter={(value: unknown) => { const v = Number(value); return [formatTooltip ? formatTooltip(v) : v.toLocaleString()]; }} cursor={{ fill: "#f8fafc" }} />
         <Legend wrapperStyle={{ fontSize: 12, paddingTop: 12 }} />
         {dataKeys.map((dk, i) => (
           <Bar key={dk.key} dataKey={dk.key} name={dk.name ?? dk.key}
@@ -121,7 +121,7 @@ export function ERPPieChart({
             <Cell key={i} fill={entry.color ?? PALETTE[i % PALETTE.length]} />
           ))}
         </Pie>
-        <Tooltip contentStyle={TT_STYLE} formatter={(v: number) => [formatValue ? formatValue(v) : v.toLocaleString()]} />
+        <Tooltip contentStyle={TT_STYLE} formatter={(value: unknown) => { const v = Number(value); return [formatValue ? formatValue(v) : v.toLocaleString()]; }} />
         <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
       </PieChart>
     </ResponsiveContainer>
