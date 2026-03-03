@@ -5,7 +5,7 @@ import { Menu, Bell, Search, ChevronDown, Settings, LogOut, User } from "lucide-
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn, getInitials } from "@/lib/utils";
-import { useAuth } from "@/lib/context/auth-context";
+import { useAuth } from "@/lib/hooks/use-auth";
 
 interface HeaderProps {
   onMenuClick: () => void;

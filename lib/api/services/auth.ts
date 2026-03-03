@@ -1,9 +1,13 @@
 import api from '../client';
 import type { AuthUser, LoginDto, LoginResponse, ChangePasswordDto } from '../types';
 
+// The backend returns { accessToken, user } — we normalise to { token, user }
+// so the rest of the frontend always works with the `token` field.
 export const authService = {
-  login: (dto: LoginDto) =>
-    api.post<LoginResponse>('/auth/login', dto).then((r) => r.data),
+  login: async (dto: LoginDto): Promise<LoginResponse> => {
+    const r = await api.post<{ accessToken: string; user: AuthUser }>('/auth/login', dto);
+    return { token: r.data.accessToken, user: r.data.user };
+  },
 
   getProfile: () =>
     api.get<AuthUser>('/auth/profile').then((r) => r.data),

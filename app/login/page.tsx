@@ -1,16 +1,63 @@
 "use client";
 
 import { useState } from "react";
-import { TrendingUp, Eye, EyeOff, Shield, BarChart3, Users, DollarSign, ChevronRight } from "lucide-react";
-import { useAuth } from "@/lib/context/auth-context";
+import { TrendingUp, Eye, EyeOff, Shield, BarChart3, Users, DollarSign, ChevronRight, WifiOff, AlertCircle, Lock } from "lucide-react";
+import { useAuth } from "@/lib/hooks/use-auth";
 
 const roles = [
-  { value: "admin",            label: "Administrator",   icon: Shield,    desc: "System & user management",  redirect: "/admin",            color: "bg-violet-500" },
-  { value: "hr",               label: "Human Resources", icon: Users,     desc: "People & payroll",           redirect: "/hr",               color: "bg-emerald-500" },
-  { value: "accountant",       label: "Accountant",      icon: BarChart3, desc: "Ledger & transactions",      redirect: "/accountant",       color: "bg-blue-500" },
-  { value: "finance-officer",  label: "Finance Officer", icon: TrendingUp,desc: "Budget & reporting",         redirect: "/finance-officer",  color: "bg-indigo-500" },
-  { value: "revenue-manager",  label: "Revenue Manager", icon: DollarSign,desc: "Sales & invoicing",          redirect: "/revenue-manager",  color: "bg-amber-500" },
+  { value: "admin",           label: "Administrator",   icon: Shield,     desc: "System & user management",  color: "bg-violet-500" },
+  { value: "hr",              label: "Human Resources", icon: Users,      desc: "People & payroll",           color: "bg-emerald-500" },
+  { value: "accountant",      label: "Accountant",      icon: BarChart3,  desc: "Ledger & transactions",      color: "bg-blue-500" },
+  { value: "finance-officer", label: "Finance Officer", icon: TrendingUp, desc: "Budget & reporting",         color: "bg-indigo-500" },
+  { value: "revenue-manager", label: "Revenue Manager", icon: DollarSign, desc: "Sales & invoicing",          color: "bg-amber-500" },
 ];
+
+type ErrorType = 'credentials' | 'suspended' | 'network' | 'server' | null;
+
+interface LoginError {
+  type: ErrorType;
+  message: string;
+}
+
+function parseLoginError(err: unknown): LoginError {
+  const axiosErr = err as {
+    response?: { status?: number; data?: { message?: string | string[] } };
+    request?: unknown;
+    message?: string;
+  };
+
+  // No response — network / server unreachable
+  if (!axiosErr.response) {
+    return {
+      type: 'network',
+      message: 'Cannot reach the server. Please check your connection or try again shortly.',
+    };
+  }
+
+  const status = axiosErr.response.status;
+  const raw = axiosErr.response.data?.message;
+  const msg = Array.isArray(raw) ? raw[0] : raw;
+
+  if (status === 401) {
+    if (msg?.toLowerCase().includes('suspend') || msg?.toLowerCase().includes('inactive')) {
+      return { type: 'suspended', message: 'Your account has been suspended. Please contact your administrator.' };
+    }
+    return { type: 'credentials', message: 'Invalid email or password. Please try again.' };
+  }
+
+  if (status && status >= 500) {
+    return { type: 'server', message: 'A server error occurred. Please try again in a moment.' };
+  }
+
+  return { type: 'server', message: msg ?? 'Something went wrong. Please try again.' };
+}
+
+const errorIconMap: Record<NonNullable<ErrorType>, typeof AlertCircle> = {
+  credentials: Lock,
+  suspended: AlertCircle,
+  network: WifiOff,
+  server: AlertCircle,
+};
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -19,20 +66,21 @@ export default function LoginPage() {
   const [role,         setRole]         = useState("admin");
   const [showPassword, setShowPassword] = useState(false);
   const [loading,      setLoading]      = useState(false);
-  const [error,        setError]        = useState("");
+  const [error,        setError]        = useState<LoginError | null>(null);
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
-    if (!email || !password) { setError("Please enter your email and password."); return; }
-    setError("");
+    if (!email || !password) {
+      setError({ type: 'credentials', message: 'Please enter both your email and password.' });
+      return;
+    }
+    setError(null);
     setLoading(true);
     try {
       await login({ email, password });
-      // redirect handled by auth context
-    } catch (err: unknown) {
-      const axiosErr = err as { response?: { data?: { message?: string | string[] } } };
-      const msg = axiosErr.response?.data?.message;
-      setError(Array.isArray(msg) ? msg[0] : (msg ?? 'Invalid credentials'));
+      // login() does a hard redirect on success — this line is never reached
+    } catch (err) {
+      setError(parseLoginError(err));
       setLoading(false);
     }
   }
@@ -76,7 +124,6 @@ export default function LoginPage() {
               One unified platform for finance, HR, payroll, CRM, and intelligent reporting.
             </p>
 
-            {/* Features */}
             <div className="space-y-3 mb-10">
               {[
                 { icon: BarChart3,  text: "Real-time financial analytics & dashboards" },
@@ -93,7 +140,6 @@ export default function LoginPage() {
               ))}
             </div>
 
-            {/* Stats */}
             <div className="flex items-center gap-8 pt-8 border-t border-white/10">
               {[{ v: "500+", l: "Employees" }, { v: "12", l: "Modules" }, { v: "99.9%", l: "Uptime" }].map((s) => (
                 <div key={s.l}>
@@ -132,7 +178,7 @@ export default function LoginPage() {
                   <button
                     key={r.value}
                     type="button"
-                    onClick={() => setRole(r.value)}
+                    onClick={() => { setRole(r.value); setError(null); }}
                     className={[
                       "w-full flex items-center gap-3 p-3 rounded-xl border-2 text-left transition-all duration-150",
                       active
@@ -164,14 +210,20 @@ export default function LoginPage() {
 
           {/* Form card */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
-            {error && (
-              <div className="flex items-center gap-2 px-4 py-3 mb-4 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
-                <svg className="w-4 h-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <circle cx="12" cy="12" r="10" /><line x1="12" y1="8" x2="12" y2="12" /><line x1="12" y1="16" x2="12.01" y2="16" />
-                </svg>
-                {error}
-              </div>
-            )}
+
+            {/* Error banner */}
+            {error && (() => {
+              const Icon = errorIconMap[error.type!];
+              const colors = error.type === 'network'
+                ? 'bg-amber-50 border-amber-200 text-amber-800'
+                : 'bg-red-50 border-red-200 text-red-700';
+              return (
+                <div className={`flex items-start gap-2.5 px-4 py-3 mb-4 border rounded-xl text-sm ${colors}`}>
+                  <Icon className="w-4 h-4 shrink-0 mt-0.5" />
+                  <span>{error.message}</span>
+                </div>
+              );
+            })()}
 
             <form onSubmit={handleLogin} className="space-y-4">
               {/* Email */}
@@ -182,9 +234,11 @@ export default function LoginPage() {
                 <input
                   type="email"
                   value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  onChange={(e) => { setEmail(e.target.value); setError(null); }}
                   placeholder="you@company.com"
+                  autoComplete="email"
                   className="erp-input"
+                  disabled={loading}
                 />
               </div>
 
@@ -194,22 +248,22 @@ export default function LoginPage() {
                   <label className="block text-xs font-semibold text-slate-600 uppercase tracking-wide">
                     Password
                   </label>
-                  <button type="button" className="text-xs text-indigo-600 hover:text-indigo-700 font-medium">
-                    Forgot password?
-                  </button>
                 </div>
                 <div className="relative">
                   <input
                     type={showPassword ? "text" : "password"}
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    onChange={(e) => { setPassword(e.target.value); setError(null); }}
                     placeholder="••••••••"
+                    autoComplete="current-password"
                     className="erp-input pr-10"
+                    disabled={loading}
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 transition-colors"
+                    tabIndex={-1}
                   >
                     {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                   </button>
@@ -220,7 +274,7 @@ export default function LoginPage() {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 mt-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 text-white text-sm font-semibold rounded-xl transition-colors duration-150 shadow-md shadow-indigo-600/25"
+                className="w-full flex items-center justify-center gap-2 px-4 py-2.5 mt-2 bg-indigo-600 hover:bg-indigo-700 disabled:bg-indigo-400 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-xl transition-colors duration-150 shadow-md shadow-indigo-600/25"
               >
                 {loading ? (
                   <>

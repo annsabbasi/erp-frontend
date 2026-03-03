@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Sidebar from "./Sidebar";
 import Header from "./Header";
 import { roleConfig } from "@/lib/constants";
-import { useAuth } from "@/lib/context/auth-context";
+import { useAuth } from "@/lib/hooks/use-auth";
 import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
 
 interface DashboardLayoutProps {
@@ -14,20 +14,25 @@ interface DashboardLayoutProps {
 }
 
 export default function DashboardLayout({ children, role }: DashboardLayoutProps) {
-  const config    = roleConfig[role] ?? { nav: [], label: role };
+  const config     = roleConfig[role] ?? { nav: [], label: role };
   const navigation = config.nav;
   const roleLabel  = config.label;
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { user, isLoading } = useAuth();
+  const { user, isHydrated } = useAuth();
   const router = useRouter();
 
+  // Safety-net: if Zustand has finished hydrating but there's no user,
+  // the proxy should have already redirected server-side. Drive the client
+  // redirect here as a fallback so the user never sees a blank page.
   useEffect(() => {
-    if (!isLoading && !user) {
-      router.push('/login');
+    if (isHydrated && !user) {
+      router.replace('/login');
     }
-  }, [isLoading, user, router]);
+  }, [isHydrated, user, router]);
 
-  if (isLoading) return <LoadingSpinner fullPage message="Loading…" />;
+  // Still waiting for Zustand to read from localStorage
+  if (!isHydrated) return <LoadingSpinner fullPage message="Loading…" />;
+  // Authenticated — either content or null while the effect redirect fires
   if (!user) return null;
 
   return (
