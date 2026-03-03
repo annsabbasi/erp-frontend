@@ -2,7 +2,14 @@
 
 import { FileBarChart, Download, TrendingUp, TrendingDown, DollarSign } from "lucide-react";
 import PageHeader from "@/components/shared/PageHeader";
-import { ChartCard, ERPAreaChart, ERPBarChart } from "@/components/shared/Charts";
+import { ChartCard, ERPAreaChart } from "@/components/shared/Charts";
+import { useFinancialSummary, useIncomeStatement, useBalanceSheet, useCashFlow } from "@/lib/hooks/use-reports";
+import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
+import { ErrorState } from "@/components/shared/ErrorState";
+
+const now = new Date();
+const startDate = `${now.getFullYear()}-01-01`;
+const endDate = new Date().toISOString().split("T")[0];
 
 const plData = [
   { month: "Sep", revenue: 185000, expenses: 142000, profit: 43000 },
@@ -13,15 +20,53 @@ const plData = [
   { month: "Feb", revenue: 228000, expenses: 170000, profit: 58000 },
 ];
 
-const reports = [
-  { name: "Profit & Loss Statement", period: "Feb 2026", type: "Monthly", status: "ready", icon: TrendingUp },
-  { name: "Balance Sheet", period: "Feb 2026", type: "Monthly", status: "ready", icon: DollarSign },
-  { name: "Cash Flow Statement", period: "Q1 2026", type: "Quarterly", status: "in-progress", icon: TrendingDown },
-  { name: "Budget Variance Report", period: "Q1 2026", type: "Quarterly", status: "ready", icon: FileBarChart },
-  { name: "Annual Financial Summary", period: "FY 2025", type: "Annual", status: "ready", icon: FileBarChart },
-];
-
 export default function ReportsPage() {
+  const { data: summary, isLoading: summaryLoading, error: summaryError, refetch: refetchSummary } = useFinancialSummary();
+  const { data: incomeStatement, isLoading: isLoading2, error: error2 } = useIncomeStatement({ startDate, endDate });
+  const { data: balanceSheet, isLoading: isLoading3, error: error3 } = useBalanceSheet();
+  const { data: cashFlow, isLoading: isLoading4, error: error4 } = useCashFlow({ startDate, endDate });
+
+  const isLoading = summaryLoading || isLoading2 || isLoading3 || isLoading4;
+  const error = summaryError || error2 || error3 || error4;
+
+  if (isLoading) return <LoadingSpinner fullPage />;
+  if (error) return <ErrorState onRetry={refetchSummary} />;
+
+  const reports = [
+    {
+      name: "Profit & Loss Statement",
+      period: `${startDate} – ${endDate}`,
+      type: "YTD",
+      status: incomeStatement ? "ready" : "in-progress",
+      icon: TrendingUp,
+      summary: incomeStatement ? `Net Income: $${(incomeStatement.netIncome ?? 0).toLocaleString()}` : null,
+    },
+    {
+      name: "Balance Sheet",
+      period: endDate,
+      type: "Current",
+      status: balanceSheet ? "ready" : "in-progress",
+      icon: DollarSign,
+      summary: balanceSheet ? `Total Assets: $${(balanceSheet.totalAssets ?? 0).toLocaleString()}` : null,
+    },
+    {
+      name: "Cash Flow Statement",
+      period: `${startDate} – ${endDate}`,
+      type: "YTD",
+      status: cashFlow ? "ready" : "in-progress",
+      icon: TrendingDown,
+      summary: cashFlow ? `Net Cash Flow: $${(cashFlow.netCashFlow ?? 0).toLocaleString()}` : null,
+    },
+    {
+      name: "Financial Summary",
+      period: endDate,
+      type: "Current",
+      status: summary ? "ready" : "in-progress",
+      icon: FileBarChart,
+      summary: summary ? `Revenue: $${(summary.totalRevenue ?? 0).toLocaleString()}` : null,
+    },
+  ];
+
   return (
     <div>
       <PageHeader
@@ -47,6 +92,22 @@ export default function ReportsPage() {
         />
       </ChartCard>
 
+      {summary && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-6">
+          {[
+            { label: "Total Revenue", value: summary.totalRevenue, color: "text-emerald-700" },
+            { label: "Total Expenses", value: summary.totalExpenses, color: "text-red-700" },
+            { label: "Net Income", value: summary.netIncome, color: "text-indigo-700" },
+            { label: "Cash Balance", value: summary.cashBalance, color: "text-blue-700" },
+          ].map(({ label, value, color }) => (
+            <div key={label} className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
+              <p className="text-xs text-slate-500">{label}</p>
+              <p className={`text-xl font-bold mt-1 ${color}`}>${(value ?? 0).toLocaleString()}</p>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {reports.map((r) => {
           const Icon = r.icon;
@@ -59,6 +120,7 @@ export default function ReportsPage() {
                 <div className="flex-1">
                   <h3 className="text-sm font-semibold text-slate-800">{r.name}</h3>
                   <p className="text-xs text-slate-400">{r.period} · {r.type}</p>
+                  {r.summary && <p className="text-xs text-indigo-600 mt-0.5 font-medium">{r.summary}</p>}
                 </div>
               </div>
               <div className="flex items-center justify-between">

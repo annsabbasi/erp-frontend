@@ -24,7 +24,7 @@ interface DataTableProps<T> {
   actions?: (row: T) => React.ReactNode;
 }
 
-export default function DataTable<T extends Record<string, unknown>>({
+export default function DataTable<T extends object>({
   data, columns, searchable = true, searchPlaceholder = "Search…",
   pageSize = 10, className, emptyMessage = "No data found.", actions,
 }: DataTableProps<T>) {
@@ -34,12 +34,14 @@ export default function DataTable<T extends Record<string, unknown>>({
   const [page,    setPage]    = useState(1);
 
   const filtered = search
-    ? data.filter((row) => Object.values(row).some((v) => String(v).toLowerCase().includes(search.toLowerCase())))
+    ? data.filter((row) => Object.values(row as Record<string, unknown>).some((v) => String(v).toLowerCase().includes(search.toLowerCase())))
     : data;
 
   const sorted = sortKey
     ? [...filtered].sort((a, b) => {
-        const cmp = String(a[sortKey]).localeCompare(String(b[sortKey]), undefined, { numeric: true });
+        const ra = a as Record<string, unknown>;
+        const rb = b as Record<string, unknown>;
+        const cmp = String(ra[sortKey]).localeCompare(String(rb[sortKey]), undefined, { numeric: true });
         return sortDir === "asc" ? cmp : -cmp;
       })
     : filtered;

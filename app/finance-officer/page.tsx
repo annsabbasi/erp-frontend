@@ -3,9 +3,12 @@
 import { TrendingUp, TrendingDown, Target, AlertCircle, DollarSign, FileBarChart } from "lucide-react";
 import StatCard from "@/components/shared/StatCard";
 import PageHeader from "@/components/shared/PageHeader";
-import Badge from "@/components/shared/Badge";
 import { ChartCard, ERPAreaChart, ERPBarChart, ERPPieChart } from "@/components/shared/Charts";
+import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
+import { ErrorState } from "@/components/shared/ErrorState";
 import Link from "next/link";
+import { useFinancialSummary } from "@/lib/hooks/use-reports";
+import { useBudgets } from "@/lib/hooks/use-budgets";
 
 const revExpTrend = [
   { month: "Sep", revenue: 185000, expenses: 142000, budget: 180000 },
@@ -16,14 +19,6 @@ const revExpTrend = [
   { month: "Feb", revenue: 228000, expenses: 170000, budget: 220000 },
 ];
 
-const budgetStatus = [
-  { dept: "HR", budgeted: 50000, actual: 47200 },
-  { dept: "Finance", budgeted: 35000, actual: 38800 },
-  { dept: "Sales", budgeted: 45000, actual: 42100 },
-  { dept: "IT", budgeted: 28000, actual: 25600 },
-  { dept: "Ops", budgeted: 30000, actual: 28900 },
-];
-
 const expenseCategories = [
   { name: "Salaries", value: 284500, color: "#4f46e5" },
   { name: "Operations", value: 48000, color: "#10b981" },
@@ -32,17 +27,49 @@ const expenseCategories = [
   { name: "Other", value: 20000, color: "#8b5cf6" },
 ];
 
-const budgetAlerts = [
-  { dept: "Finance", message: "15% over budget — review required", type: "danger" },
-  { dept: "Marketing", message: "Approaching Q1 budget limit (92% used)", type: "warning" },
-];
-
 export default function FinanceOfficerDashboard() {
-  const totalRevenue = revExpTrend[revExpTrend.length - 1].revenue;
-  const totalExpenses = revExpTrend[revExpTrend.length - 1].expenses;
-  const netProfit = totalRevenue - totalExpenses;
+  const { data: financialSummary, isLoading: summaryLoading, error: summaryError, refetch: refetchSummary } = useFinancialSummary();
+  const { data: budgetsData, isLoading: budgetsLoading, error: budgetsError, refetch: refetchBudgets } = useBudgets();
+
+  const isLoading = summaryLoading || budgetsLoading;
+  const error = summaryError || budgetsError;
+
+  if (isLoading) return <LoadingSpinner fullPage />;
+  if (error) return <ErrorState onRetry={() => { refetchSummary(); refetchBudgets(); }} />;
+
+  const totalRevenue = financialSummary?.totalRevenue ?? 0;
+  const totalExpenses = financialSummary?.totalExpenses ?? 0;
+  const netIncome = financialSummary?.netIncome ?? 0;
+
+  // Derive budget status from real budget data
+  const budgets = budgetsData?.data ?? [];
+  const budgetStatus = budgets.slice(0, 5).map((b) => ({
+    dept: b.department?.name ?? b.name,
+    budgeted: b.totalBudgeted ?? 0,
+    actual: b.totalActual ?? 0,
+  }));
+
   const totalBudget = budgetStatus.reduce((s, b) => s + b.budgeted, 0);
   const totalActual = budgetStatus.reduce((s, b) => s + b.actual, 0);
+  const budgetUtilizationPct = totalBudget > 0 ? Math.round((totalActual / totalBudget) * 100) : 0;
+
+  // Budget chart data
+  const budgetChartData = budgetStatus.map((b) => ({
+    dept: b.dept,
+    budgeted: b.budgeted,
+    actual: b.actual,
+  }));
+
+  // Budget alerts: departments over budget
+  const budgetAlerts = budgetStatus
+    .filter((b) => b.budgeted > 0 && b.actual / b.budgeted > 1)
+    .map((b) => ({
+      dept: b.dept,
+      message: `${Math.round(((b.actual - b.budgeted) / b.budgeted) * 100)}% over budget — review required`,
+      type: "danger" as const,
+    }));
+
+  const marginPct = totalRevenue > 0 ? ((netIncome / totalRevenue) * 100).toFixed(1) : "0.0";
 
   return (
     <div>
@@ -67,10 +94,36 @@ export default function FinanceOfficerDashboard() {
       ))}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
-        <StatCard title="Revenue (Feb)" value={`$${(totalRevenue / 1000).toFixed(0)}k`} icon={TrendingUp} change={6.0} variant="success" />
-        <StatCard title="Expenses (Feb)" value={`$${(totalExpenses / 1000).toFixed(0)}k`} icon={TrendingDown} change={4.9} variant="danger" />
-        <StatCard title="Net Profit" value={`$${(netProfit / 1000).toFixed(0)}k`} icon={DollarSign} change={9.2} variant="primary" description="25.4% margin" />
-        <StatCard title="Budget Utilization" value={`${Math.round((totalActual / totalBudget) * 100)}%`} icon={Target} change={-2.1} variant="info" description={`$${totalActual.toLocaleString()} / $${totalBudget.toLocaleString()}`} />
+        <StatCard
+          title="Total Revenue"
+          value={`$${(totalRevenue / 1000).toFixed(0)}k`}
+          icon={TrendingUp}
+          change={financialSummary?.revenueGrowth ?? 6.0}
+          variant="success"
+        />
+        <StatCard
+          title="Total Expenses"
+          value={`$${(totalExpenses / 1000).toFixed(0)}k`}
+          icon={TrendingDown}
+          change={financialSummary?.expenseGrowth ?? 4.9}
+          variant="danger"
+        />
+        <StatCard
+          title="Net Profit"
+          value={`$${(netIncome / 1000).toFixed(0)}k`}
+          icon={DollarSign}
+          change={9.2}
+          variant="primary"
+          description={`${marginPct}% margin`}
+        />
+        <StatCard
+          title="Budget Utilization"
+          value={`${budgetUtilizationPct}%`}
+          icon={Target}
+          change={-2.1}
+          variant="info"
+          description={totalBudget > 0 ? `$${totalActual.toLocaleString()} / $${totalBudget.toLocaleString()}` : "No budgets"}
+        />
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 mb-6">
@@ -87,15 +140,15 @@ export default function FinanceOfficerDashboard() {
           />
         </ChartCard>
 
-        <ChartCard title="Expense Distribution" description="By category (Feb)">
+        <ChartCard title="Expense Distribution" description="By category (YTD)">
           <ERPPieChart data={expenseCategories} formatValue={(v) => `$${v.toLocaleString()}`} />
         </ChartCard>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        <ChartCard title="Budget vs Actual by Department" description="February 2026">
+        <ChartCard title="Budget vs Actual by Department" description="Current period">
           <ERPBarChart
-            data={budgetStatus}
+            data={budgetChartData.length > 0 ? budgetChartData : [{ dept: "No data", budgeted: 0, actual: 0 }]}
             dataKeys={[
               { key: "budgeted", name: "Budgeted", color: "#94a3b8" },
               { key: "actual", name: "Actual", color: "#4f46e5" },
@@ -108,8 +161,8 @@ export default function FinanceOfficerDashboard() {
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
           <h3 className="text-sm font-semibold text-slate-800 mb-4">Department Budget Status</h3>
           <div className="space-y-4">
-            {budgetStatus.map((dept) => {
-              const pct = Math.round((dept.actual / dept.budgeted) * 100);
+            {budgetStatus.length > 0 ? budgetStatus.map((dept) => {
+              const pct = dept.budgeted > 0 ? Math.round((dept.actual / dept.budgeted) * 100) : 0;
               const over = pct > 100;
               return (
                 <div key={dept.dept}>
@@ -127,7 +180,9 @@ export default function FinanceOfficerDashboard() {
                   </div>
                 </div>
               );
-            })}
+            }) : (
+              <p className="text-sm text-slate-400 text-center py-4">No budget data available</p>
+            )}
           </div>
           <div className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-2 gap-2">
             <Link href="/finance-officer/budget-management/create" className="px-3 py-2 text-xs text-center text-indigo-600 bg-indigo-50 hover:bg-indigo-100 rounded-lg font-medium transition-colors">

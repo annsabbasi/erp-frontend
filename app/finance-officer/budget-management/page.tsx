@@ -6,21 +6,48 @@ import Badge from "@/components/shared/Badge";
 import StatCard from "@/components/shared/StatCard";
 import Link from "next/link";
 import { DollarSign } from "lucide-react";
-
-const budgets = [
-  { id: 1, name: "Q1 2026 – Human Resources", dept: "HR", total: 150000, spent: 98400, status: "active", approvedBy: "Finance Director", period: "Jan–Mar 2026" },
-  { id: 2, name: "Q1 2026 – Finance & Accounting", dept: "Finance", total: 105000, spent: 116400, status: "over-budget", approvedBy: "Finance Director", period: "Jan–Mar 2026" },
-  { id: 3, name: "Q1 2026 – Sales & Marketing", dept: "Sales", total: 135000, spent: 126300, status: "active", approvedBy: "Finance Director", period: "Jan–Mar 2026" },
-  { id: 4, name: "Q1 2026 – IT Infrastructure", dept: "IT", total: 84000, spent: 76800, status: "active", approvedBy: "Finance Director", period: "Jan–Mar 2026" },
-  { id: 5, name: "Q2 2026 – Human Resources", dept: "HR", total: 155000, spent: 0, status: "pending-approval", approvedBy: "—", period: "Apr–Jun 2026" },
-  { id: 6, name: "Q2 2026 – Finance & Accounting", dept: "Finance", total: 108000, spent: 0, status: "pending-approval", approvedBy: "—", period: "Apr–Jun 2026" },
-];
+import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
+import { ErrorState } from "@/components/shared/ErrorState";
+import { useBudgets, useApproveBudget, useRejectBudget } from "@/lib/hooks/use-budgets";
+import type { Budget, BudgetStatus } from "@/lib/api/types";
 
 export default function BudgetManagementPage() {
-  const totalBudgeted = budgets.filter((b) => b.status !== "pending-approval").reduce((s, b) => s + b.total, 0);
-  const totalSpent = budgets.reduce((s, b) => s + b.spent, 0);
-  const overBudget = budgets.filter((b) => b.status === "over-budget").length;
-  const pendingApproval = budgets.filter((b) => b.status === "pending-approval").length;
+  const { data, isLoading, error, refetch } = useBudgets();
+  const approveBudgetMutation = useApproveBudget();
+  const rejectBudgetMutation = useRejectBudget();
+
+  if (isLoading) return <LoadingSpinner fullPage />;
+  if (error) return <ErrorState onRetry={refetch} />;
+
+  const budgets: Budget[] = data?.data ?? [];
+
+  const totalBudgeted = budgets
+    .filter((b) => b.status === "ACTIVE")
+    .reduce((s, b) => s + (b.totalBudgeted ?? 0), 0);
+
+  const totalSpent = budgets.reduce((s, b) => s + (b.totalActual ?? 0), 0);
+
+  const overBudget = budgets.filter(
+    (b) => b.status === "ACTIVE" && (b.totalActual ?? 0) > (b.totalBudgeted ?? 0)
+  ).length;
+
+  const pendingApproval = budgets.filter((b) => b.status === "SUBMITTED").length;
+
+  function getStatusVariant(status: BudgetStatus, totalBudgeted: number, totalActual: number) {
+    if (status === "SUBMITTED") return "warning";
+    if (status === "REJECTED") return "danger";
+    if (status === "ACTIVE" && totalActual > totalBudgeted) return "danger";
+    if (status === "ACTIVE") return "success";
+    return "secondary";
+  }
+
+  function getStatusLabel(status: BudgetStatus, totalBudgeted: number, totalActual: number) {
+    if (status === "SUBMITTED") return "Pending Approval";
+    if (status === "REJECTED") return "Rejected";
+    if (status === "ACTIVE" && totalActual > totalBudgeted) return "Over Budget";
+    if (status === "ACTIVE") return "Active";
+    return status.charAt(0) + status.slice(1).toLowerCase();
+  }
 
   return (
     <div>
@@ -40,7 +67,7 @@ export default function BudgetManagementPage() {
       />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
-        <StatCard title="Total Budgeted (Q1)" value={`$${(totalBudgeted / 1000).toFixed(0)}k`} icon={Target} variant="primary" />
+        <StatCard title="Total Budgeted (Active)" value={`$${(totalBudgeted / 1000).toFixed(0)}k`} icon={Target} variant="primary" />
         <StatCard title="Total Spent" value={`$${(totalSpent / 1000).toFixed(0)}k`} icon={DollarSign} variant="info" />
         <StatCard title="Over Budget" value={overBudget} icon={TrendingDown} variant="danger" />
         <StatCard title="Pending Approval" value={pendingApproval} icon={Clock} variant="warning" />
@@ -48,34 +75,38 @@ export default function BudgetManagementPage() {
 
       <div className="space-y-4">
         {budgets.map((b) => {
-          const pct = b.total > 0 ? Math.round((b.spent / b.total) * 100) : 0;
-          const remaining = b.total - b.spent;
+          const budgeted = b.totalBudgeted ?? 0;
+          const actual = b.totalActual ?? 0;
+          const pct = budgeted > 0 ? Math.round((actual / budgeted) * 100) : 0;
+          const remaining = budgeted - actual;
+          const isOverBudget = b.status === "ACTIVE" && actual > budgeted;
+
           return (
-            <div key={b.id} className={`bg-white rounded-xl border shadow-sm p-5 ${b.status === "over-budget" ? "border-red-200" : "border-slate-200"}`}>
+            <div key={b.id} className={`bg-white rounded-xl border shadow-sm p-5 ${isOverBudget ? "border-red-200" : "border-slate-200"}`}>
               <div className="flex items-start justify-between mb-4">
                 <div>
                   <h3 className="text-sm font-semibold text-slate-800">{b.name}</h3>
                   <div className="flex items-center gap-2 mt-1">
-                    <Badge variant="secondary">{b.dept}</Badge>
-                    <span className="text-xs text-slate-400">{b.period}</span>
+                    <Badge variant="secondary">{b.department?.name ?? b.departmentId}</Badge>
+                    <span className="text-xs text-slate-400">{b.periodLabel}</span>
                   </div>
                 </div>
                 <Badge
                   dot
-                  variant={b.status === "over-budget" ? "danger" : b.status === "pending-approval" ? "warning" : "success"}
+                  variant={getStatusVariant(b.status, budgeted, actual)}
                 >
-                  {b.status === "over-budget" ? "Over Budget" : b.status === "pending-approval" ? "Pending Approval" : "Active"}
+                  {getStatusLabel(b.status, budgeted, actual)}
                 </Badge>
               </div>
 
               <div className="grid grid-cols-3 gap-4 mb-4">
                 <div className="bg-slate-50 rounded-lg p-3">
                   <p className="text-xs text-slate-400">Total Budget</p>
-                  <p className="text-base font-bold text-slate-800">${b.total.toLocaleString()}</p>
+                  <p className="text-base font-bold text-slate-800">${budgeted.toLocaleString()}</p>
                 </div>
                 <div className="bg-slate-50 rounded-lg p-3">
                   <p className="text-xs text-slate-400">Spent</p>
-                  <p className={`text-base font-bold ${b.status === "over-budget" ? "text-red-700" : "text-slate-800"}`}>${b.spent.toLocaleString()}</p>
+                  <p className={`text-base font-bold ${isOverBudget ? "text-red-700" : "text-slate-800"}`}>${actual.toLocaleString()}</p>
                 </div>
                 <div className="bg-slate-50 rounded-lg p-3">
                   <p className="text-xs text-slate-400">Remaining</p>
@@ -85,7 +116,7 @@ export default function BudgetManagementPage() {
                 </div>
               </div>
 
-              {b.status !== "pending-approval" && (
+              {b.status === "ACTIVE" && (
                 <div>
                   <div className="flex justify-between text-xs text-slate-500 mb-1">
                     <span>Budget Utilization</span>
@@ -100,12 +131,20 @@ export default function BudgetManagementPage() {
                 </div>
               )}
 
-              {b.status === "pending-approval" && (
+              {b.status === "SUBMITTED" && (
                 <div className="flex gap-2 pt-2">
-                  <Link href="/finance-officer/budget-management/approve" className="flex items-center gap-1 px-3 py-1.5 bg-emerald-50 text-emerald-700 text-xs font-medium rounded-lg hover:bg-emerald-100 transition-colors">
+                  <button
+                    onClick={() => approveBudgetMutation.mutate({ id: b.id, dto: { action: "ACTIVE" } })}
+                    disabled={approveBudgetMutation.isPending}
+                    className="flex items-center gap-1 px-3 py-1.5 bg-emerald-50 text-emerald-700 text-xs font-medium rounded-lg hover:bg-emerald-100 transition-colors disabled:opacity-50"
+                  >
                     <CheckCircle2 className="w-3.5 h-3.5" /> Approve
-                  </Link>
-                  <button className="px-3 py-1.5 bg-red-50 text-red-700 text-xs font-medium rounded-lg hover:bg-red-100 transition-colors">
+                  </button>
+                  <button
+                    onClick={() => rejectBudgetMutation.mutate({ id: b.id })}
+                    disabled={rejectBudgetMutation.isPending}
+                    className="px-3 py-1.5 bg-red-50 text-red-700 text-xs font-medium rounded-lg hover:bg-red-100 transition-colors disabled:opacity-50"
+                  >
                     Reject
                   </button>
                 </div>

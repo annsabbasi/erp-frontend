@@ -6,6 +6,9 @@ import StatCard from "@/components/shared/StatCard";
 import Badge from "@/components/shared/Badge";
 import Link from "next/link";
 import { ChartCard, ERPAreaChart } from "@/components/shared/Charts";
+import { usePayrollRuns } from "@/lib/hooks/use-payroll";
+import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
+import { ErrorState } from "@/components/shared/ErrorState";
 
 const payrollTrend = [
   { month: "Sep", gross: 270000, net: 225000, deductions: 45000 },
@@ -16,14 +19,17 @@ const payrollTrend = [
   { month: "Feb", gross: 284500, net: 236800, deductions: 47700 },
 ];
 
-const recentPayroll = [
-  { period: "February 2026", processed: "Feb 25, 2026", employees: 62, gross: "$284,500", net: "$236,800", status: "processed" },
-  { period: "January 2026", processed: "Jan 27, 2026", employees: 60, gross: "$280,000", net: "$233,200", status: "processed" },
-  { period: "December 2025", processed: "Dec 27, 2025", employees: 60, gross: "$282,000", net: "$234,900", status: "processed" },
-  { period: "March 2026", processed: "—", employees: 62, gross: "~$285,000", net: "~$237,500", status: "pending" },
-];
+const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 
 export default function PayrollPage() {
+  const { data, isLoading, error, refetch } = usePayrollRuns();
+
+  if (isLoading) return <LoadingSpinner fullPage />;
+  if (error) return <ErrorState onRetry={refetch} />;
+
+  const runs = data?.data ?? [];
+  const latest = runs[0];
+
   return (
     <div>
       <PageHeader
@@ -42,10 +48,10 @@ export default function PayrollPage() {
       />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
-        <StatCard title="This Month's Payroll" value="$284,500" icon={DollarSign} change={1.6} variant="primary" />
-        <StatCard title="Employees Paid" value="62" icon={Users} change={3.3} variant="success" />
-        <StatCard title="Net Payable" value="$236,800" icon={TrendingUp} change={1.5} variant="info" />
-        <StatCard title="Total Deductions" value="$47,700" icon={Calendar} change={1.5} variant="warning" />
+        <StatCard title="This Month's Payroll" value={latest ? `$${(latest.totalGross ?? 0).toLocaleString()}` : "—"} icon={DollarSign} variant="primary" />
+        <StatCard title="Net Payable" value={latest ? `$${(latest.totalNet ?? 0).toLocaleString()}` : "—"} icon={TrendingUp} variant="info" />
+        <StatCard title="Total Deductions" value={latest ? `$${(latest.totalDeductions ?? 0).toLocaleString()}` : "—"} icon={Calendar} variant="warning" />
+        <StatCard title="Payroll Runs" value={runs.length} icon={Users} variant="success" />
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 mb-6">
@@ -92,21 +98,21 @@ export default function PayrollPage() {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-100">
-                {["Period", "Processed On", "Employees", "Gross Pay", "Net Pay", "Status"].map((h) => (
+                {["Period", "Processed On", "Gross Pay", "Net Pay", "Deductions", "Status"].map((h) => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {recentPayroll.map((p) => (
-                <tr key={p.period} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-4 py-3 font-medium text-slate-800">{p.period}</td>
-                  <td className="px-4 py-3 text-slate-500">{p.processed}</td>
-                  <td className="px-4 py-3 text-slate-600">{p.employees}</td>
-                  <td className="px-4 py-3 font-medium text-slate-800">{p.gross}</td>
-                  <td className="px-4 py-3 font-medium text-emerald-700">{p.net}</td>
+              {runs.map((p) => (
+                <tr key={p.id} className="hover:bg-slate-50 transition-colors">
+                  <td className="px-4 py-3 font-medium text-slate-800">{MONTH_NAMES[(p.month ?? 1) - 1]} {p.year}</td>
+                  <td className="px-4 py-3 text-slate-500">{p.createdAt ? new Date(p.createdAt).toLocaleDateString() : "—"}</td>
+                  <td className="px-4 py-3 font-medium text-slate-800">${(p.totalGross ?? 0).toLocaleString()}</td>
+                  <td className="px-4 py-3 font-medium text-emerald-700">${(p.totalNet ?? 0).toLocaleString()}</td>
+                  <td className="px-4 py-3 text-slate-600">${(p.totalDeductions ?? 0).toLocaleString()}</td>
                   <td className="px-4 py-3">
-                    <Badge dot variant={p.status === "processed" ? "success" : "warning"}>{p.status}</Badge>
+                    <Badge dot variant={p.status === "PAID" ? "success" : p.status === "APPROVED" ? "info" : p.status === "SUBMITTED" ? "warning" : "secondary"}>{p.status}</Badge>
                   </td>
                 </tr>
               ))}

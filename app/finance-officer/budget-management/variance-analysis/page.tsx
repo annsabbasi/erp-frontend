@@ -4,24 +4,40 @@ import PageHeader from "@/components/shared/PageHeader";
 import Badge from "@/components/shared/Badge";
 import { ChartCard, ERPBarChart } from "@/components/shared/Charts";
 import { Download } from "lucide-react";
-
-const variances = [
-  { dept: "HR", budgeted: 150000, actual: 98400, variance: -51600, variancePct: -34.4, favorable: true },
-  { dept: "Finance", budgeted: 105000, actual: 116400, variance: 11400, variancePct: 10.9, favorable: false },
-  { dept: "Sales", budgeted: 135000, actual: 126300, variance: -8700, variancePct: -6.4, favorable: true },
-  { dept: "IT", budgeted: 84000, actual: 76800, variance: -7200, variancePct: -8.6, favorable: true },
-  { dept: "Operations", budgeted: 90000, actual: 86700, variance: -3300, variancePct: -3.7, favorable: true },
-];
-
-const categoryVariances = [
-  { dept: "HR", budgeted: 150000, actual: 98400 },
-  { dept: "Finance", budgeted: 105000, actual: 116400 },
-  { dept: "Sales", budgeted: 135000, actual: 126300 },
-  { dept: "IT", budgeted: 84000, actual: 76800 },
-  { dept: "Ops", budgeted: 90000, actual: 86700 },
-];
+import { useBudgets } from "@/lib/hooks/use-budgets";
+import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
+import { ErrorState } from "@/components/shared/ErrorState";
 
 export default function VarianceAnalysisPage() {
+  const { data, isLoading, error, refetch } = useBudgets();
+
+  if (isLoading) return <LoadingSpinner fullPage />;
+  if (error) return <ErrorState onRetry={refetch} />;
+
+  const budgets = data?.data ?? [];
+
+  const variances = budgets.map((b) => {
+    const budgeted = b.totalBudgeted ?? 0;
+    const actual = b.totalActual ?? 0;
+    const variance = actual - budgeted;
+    const variancePct = budgeted !== 0 ? ((variance / budgeted) * 100) : 0;
+    const favorable = variance < 0;
+    return {
+      dept: b.department?.name ?? b.name,
+      budgeted,
+      actual,
+      variance,
+      variancePct,
+      favorable,
+    };
+  });
+
+  const categoryVariances = variances.map((v) => ({
+    dept: v.dept,
+    budgeted: v.budgeted,
+    actual: v.actual,
+  }));
+
   const totalBudgeted = variances.reduce((s, v) => s + v.budgeted, 0);
   const totalActual = variances.reduce((s, v) => s + v.actual, 0);
   const totalVariance = totalActual - totalBudgeted;
@@ -40,11 +56,11 @@ export default function VarianceAnalysisPage() {
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
         <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
-          <p className="text-xs text-slate-500">Total Budgeted (Q1)</p>
+          <p className="text-xs text-slate-500">Total Budgeted</p>
           <p className="text-2xl font-bold text-slate-900 mt-1">${totalBudgeted.toLocaleString()}</p>
         </div>
         <div className="bg-white rounded-xl border border-slate-200 p-4 shadow-sm">
-          <p className="text-xs text-slate-500">Total Actual (Q1)</p>
+          <p className="text-xs text-slate-500">Total Actual</p>
           <p className="text-2xl font-bold text-slate-900 mt-1">${totalActual.toLocaleString()}</p>
         </div>
         <div className={`rounded-xl border p-4 shadow-sm ${totalVariance < 0 ? "bg-emerald-50 border-emerald-200" : "bg-red-50 border-red-200"}`}>
@@ -57,7 +73,7 @@ export default function VarianceAnalysisPage() {
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-6">
-        <ChartCard title="Budget vs Actual by Department" description="Q1 2026">
+        <ChartCard title="Budget vs Actual by Department/Budget">
           <ERPBarChart
             data={categoryVariances}
             dataKeys={[
@@ -77,14 +93,14 @@ export default function VarianceAnalysisPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="bg-slate-50 border-b border-slate-100">
-                  {["Department", "Budgeted", "Actual", "Variance", "Type"].map((h) => (
+                  {["Budget", "Budgeted", "Actual", "Variance", "Type"].map((h) => (
                     <th key={h} className="px-4 py-2.5 text-left text-xs font-semibold text-slate-500 uppercase">{h}</th>
                   ))}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
-                {variances.map((v) => (
-                  <tr key={v.dept} className={`hover:bg-slate-50 transition-colors ${!v.favorable ? "bg-red-50/30" : ""}`}>
+                {variances.map((v, i) => (
+                  <tr key={i} className={`hover:bg-slate-50 transition-colors ${!v.favorable ? "bg-red-50/30" : ""}`}>
                     <td className="px-4 py-3 font-medium text-slate-800">{v.dept}</td>
                     <td className="px-4 py-3 text-slate-600">${v.budgeted.toLocaleString()}</td>
                     <td className="px-4 py-3 text-slate-600">${v.actual.toLocaleString()}</td>

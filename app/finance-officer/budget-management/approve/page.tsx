@@ -1,29 +1,25 @@
 "use client";
 
-import { useState } from "react";
-import { Check, X, Eye } from "lucide-react";
+import { Check, X } from "lucide-react";
 import PageHeader from "@/components/shared/PageHeader";
 import Badge from "@/components/shared/Badge";
-
-type Budget = {
-  id: number; name: string; dept: string; submittedBy: string; period: string; total: number; submittedDate: string; status: "pending" | "approved" | "rejected"; justification: string;
-};
-
-const initialBudgets: Budget[] = [
-  { id: 1, name: "Q2 2026 – Human Resources", dept: "HR", submittedBy: "Sarah Johnson", period: "Apr–Jun 2026", total: 155000, submittedDate: "Feb 25, 2026", status: "pending", justification: "Includes planned 3 new hires and updated benefits package for Q2. Also covers company-wide training program." },
-  { id: 2, name: "Q2 2026 – Finance & Accounting", dept: "Finance", submittedBy: "Mike Chen", period: "Apr–Jun 2026", total: 108000, submittedDate: "Feb 26, 2026", status: "pending", justification: "Accounts for audit fees, accounting software renewal, and additional contractor hours for Q1 closeout." },
-  { id: 3, name: "Q2 2026 – Sales & Marketing", dept: "Sales", submittedBy: "Alex Thompson", period: "Apr–Jun 2026", total: 142000, submittedDate: "Feb 24, 2026", status: "approved", justification: "Digital marketing campaigns, trade show participation, and CRM upgrade." },
-];
+import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
+import { ErrorState } from "@/components/shared/ErrorState";
+import { useBudgets, useApproveBudget, useRejectBudget } from "@/lib/hooks/use-budgets";
+import type { Budget } from "@/lib/api/types";
 
 export default function ApproveBudgetPage() {
-  const [budgets, setBudgets] = useState(initialBudgets);
-  const [expandedId, setExpandedId] = useState<number | null>(null);
+  const { data, isLoading, error, refetch } = useBudgets({ status: "SUBMITTED" });
+  const { data: activeData, isLoading: activeLoading, error: activeError, refetch: refetchActive } = useBudgets({ status: "ACTIVE" });
+  const { data: rejectedData, isLoading: rejectedLoading, error: rejectedError, refetch: refetchRejected } = useBudgets({ status: "REJECTED" });
+  const approveBudgetMutation = useApproveBudget();
+  const rejectBudgetMutation = useRejectBudget();
 
-  function approve(id: number) { setBudgets(budgets.map((b) => b.id === id ? { ...b, status: "approved" } : b)); }
-  function reject(id: number) { setBudgets(budgets.map((b) => b.id === id ? { ...b, status: "rejected" } : b)); }
+  if (isLoading || activeLoading || rejectedLoading) return <LoadingSpinner fullPage />;
+  if (error || activeError || rejectedError) return <ErrorState onRetry={() => { refetch(); refetchActive(); refetchRejected(); }} />;
 
-  const pending = budgets.filter((b) => b.status === "pending");
-  const reviewed = budgets.filter((b) => b.status !== "pending");
+  const pending: Budget[] = data?.data ?? [];
+  const reviewed: Budget[] = [...(activeData?.data ?? []), ...(rejectedData?.data ?? [])];
 
   return (
     <div>
@@ -45,29 +41,39 @@ export default function ApproveBudgetPage() {
                   <div>
                     <h3 className="text-sm font-semibold text-slate-800">{b.name}</h3>
                     <div className="flex items-center gap-3 mt-1 text-xs text-slate-500">
-                      <span>Submitted by {b.submittedBy}</span>
+                      <span>{b.department?.name ?? b.departmentId}</span>
                       <span>·</span>
-                      <span>{b.submittedDate}</span>
+                      <span>{new Date(b.startDate).toLocaleDateString()} – {new Date(b.endDate).toLocaleDateString()}</span>
                       <span>·</span>
-                      <span>{b.period}</span>
+                      <span>{b.periodLabel}</span>
                     </div>
                   </div>
                   <div className="text-right">
-                    <p className="text-xl font-bold text-slate-900">${b.total.toLocaleString()}</p>
+                    <p className="text-xl font-bold text-slate-900">${(b.totalBudgeted ?? 0).toLocaleString()}</p>
                     <Badge variant="warning" dot>Pending</Badge>
                   </div>
                 </div>
 
-                <div className="bg-white rounded-lg p-3 mb-4 border border-slate-100">
-                  <p className="text-xs font-medium text-slate-500 mb-1">Justification</p>
-                  <p className="text-sm text-slate-600 leading-relaxed">{b.justification}</p>
-                </div>
+                {b.notes && (
+                  <div className="bg-white rounded-lg p-3 mb-4 border border-slate-100">
+                    <p className="text-xs font-medium text-slate-500 mb-1">Notes</p>
+                    <p className="text-sm text-slate-600 leading-relaxed">{b.notes}</p>
+                  </div>
+                )}
 
                 <div className="flex gap-2">
-                  <button onClick={() => approve(b.id)} className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg transition-colors">
+                  <button
+                    onClick={() => approveBudgetMutation.mutate({ id: b.id, dto: { action: "ACTIVE" } })}
+                    disabled={approveBudgetMutation.isPending}
+                    className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+                  >
                     <Check className="w-4 h-4" /> Approve Budget
                   </button>
-                  <button onClick={() => reject(b.id)} className="flex items-center gap-1.5 px-4 py-2 border border-red-200 text-red-600 hover:bg-red-50 text-sm font-medium rounded-lg transition-colors">
+                  <button
+                    onClick={() => rejectBudgetMutation.mutate({ id: b.id })}
+                    disabled={rejectBudgetMutation.isPending}
+                    className="flex items-center gap-1.5 px-4 py-2 border border-red-200 text-red-600 hover:bg-red-50 text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
+                  >
                     <X className="w-4 h-4" /> Reject
                   </button>
                 </div>
@@ -85,9 +91,11 @@ export default function ApproveBudgetPage() {
               <div key={b.id} className="bg-white rounded-xl border border-slate-200 shadow-sm p-4 flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-slate-800">{b.name}</p>
-                  <p className="text-xs text-slate-400">{b.period} · ${b.total.toLocaleString()}</p>
+                  <p className="text-xs text-slate-400">{b.periodLabel} · ${(b.totalBudgeted ?? 0).toLocaleString()}</p>
                 </div>
-                <Badge dot variant={b.status === "approved" ? "success" : "danger"}>{b.status}</Badge>
+                <Badge dot variant={b.status === "ACTIVE" ? "success" : "danger"}>
+                  {b.status === "ACTIVE" ? "Approved" : "Rejected"}
+                </Badge>
               </div>
             ))}
           </div>

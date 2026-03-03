@@ -5,7 +5,11 @@ import StatCard from "@/components/shared/StatCard";
 import PageHeader from "@/components/shared/PageHeader";
 import Badge from "@/components/shared/Badge";
 import { ChartCard, ERPAreaChart, ERPBarChart } from "@/components/shared/Charts";
+import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
+import { ErrorState } from "@/components/shared/ErrorState";
 import Link from "next/link";
+import { useFinancialSummary } from "@/lib/hooks/use-reports";
+import { useJournalEntries } from "@/lib/hooks/use-journal-entries";
 
 const plTrend = [
   { month: "Sep", income: 185000, expenses: 142000 },
@@ -25,14 +29,6 @@ const expenseBreakdown = [
   { category: "Other", amount: 8000 },
 ];
 
-const recentTransactions = [
-  { id: "TXN-2026-0892", desc: "Vendor Payment – TechSupply Co.", type: "Expense", amount: -8400, date: "Feb 27", status: "cleared" },
-  { id: "TXN-2026-0891", desc: "Client Invoice – GlobalCorp Ltd.", type: "Revenue", amount: 24500, date: "Feb 27", status: "cleared" },
-  { id: "TXN-2026-0890", desc: "Monthly Payroll Processing", type: "Expense", amount: -284500, date: "Feb 25", status: "cleared" },
-  { id: "TXN-2026-0889", desc: "Office Rent – February", type: "Expense", amount: -12000, date: "Feb 25", status: "cleared" },
-  { id: "TXN-2026-0888", desc: "Client Invoice – StartupXYZ", type: "Revenue", amount: 15800, date: "Feb 24", status: "pending" },
-];
-
 const alerts = [
   { msg: "Invoice INV-2026-042 overdue by 15 days", type: "danger" },
   { msg: "Bank statement reconciliation pending for Feb", type: "warning" },
@@ -40,9 +36,22 @@ const alerts = [
 ];
 
 export default function AccountantDashboard() {
-  const revenue = plTrend[plTrend.length - 1].income;
-  const expenses = plTrend[plTrend.length - 1].expenses;
-  const profit = revenue - expenses;
+  const { data: financialSummary, isLoading: summaryLoading, error: summaryError, refetch: refetchSummary } = useFinancialSummary();
+  const { data: journalData, isLoading: journalLoading, error: journalError, refetch: refetchJournal } = useJournalEntries();
+
+  const isLoading = summaryLoading || journalLoading;
+  const error = summaryError || journalError;
+
+  if (isLoading) return <LoadingSpinner fullPage />;
+  if (error) return <ErrorState onRetry={() => { refetchSummary(); refetchJournal(); }} />;
+
+  const totalRevenue = financialSummary?.totalRevenue ?? 0;
+  const totalExpenses = financialSummary?.totalExpenses ?? 0;
+  const netIncome = financialSummary?.netIncome ?? 0;
+  const accountsReceivable = financialSummary?.accountsReceivable ?? 0;
+
+  // Recent journal entries as "transactions"
+  const recentEntries = (journalData?.data ?? []).slice(0, 5);
 
   return (
     <div>
@@ -67,10 +76,35 @@ export default function AccountantDashboard() {
       ))}
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
-        <StatCard title="Total Revenue (Feb)" value="$228,000" icon={TrendingUp} change={6.0} variant="success" />
-        <StatCard title="Total Expenses (Feb)" value="$170,000" icon={TrendingDown} change={4.9} variant="danger" />
-        <StatCard title="Net Profit (Feb)" value={`$${(profit / 1000).toFixed(0)}k`} icon={DollarSign} change={9.2} variant="primary" />
-        <StatCard title="Pending Invoices" value="7" icon={CreditCard} change={-12.5} variant="warning" description="$84,200 outstanding" />
+        <StatCard
+          title="Total Revenue"
+          value={`$${(totalRevenue / 1000).toFixed(0)}k`}
+          icon={TrendingUp}
+          change={financialSummary?.revenueGrowth ?? 6.0}
+          variant="success"
+        />
+        <StatCard
+          title="Total Expenses"
+          value={`$${(totalExpenses / 1000).toFixed(0)}k`}
+          icon={TrendingDown}
+          change={financialSummary?.expenseGrowth ?? 4.9}
+          variant="danger"
+        />
+        <StatCard
+          title="Net Income"
+          value={`$${(netIncome / 1000).toFixed(0)}k`}
+          icon={DollarSign}
+          change={9.2}
+          variant="primary"
+        />
+        <StatCard
+          title="Accounts Receivable"
+          value={`$${(accountsReceivable / 1000).toFixed(0)}k`}
+          icon={CreditCard}
+          change={-12.5}
+          variant="warning"
+          description="Outstanding balance"
+        />
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4 mb-6">
@@ -97,34 +131,48 @@ export default function AccountantDashboard() {
         </ChartCard>
       </div>
 
-      {/* Recent Transactions */}
+      {/* Recent Journal Entries */}
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-          <h3 className="text-sm font-semibold text-slate-800">Recent Transactions</h3>
+          <h3 className="text-sm font-semibold text-slate-800">Recent Journal Entries</h3>
           <Link href="/accountant/transactions" className="text-xs text-indigo-600 hover:text-indigo-700 font-medium">View all</Link>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-100">
-                {["Transaction ID", "Description", "Type", "Amount", "Date", "Status"].map((h) => (
+                {["Entry ID", "Description", "Type", "Total Debit", "Date", "Status"].map((h) => (
                   <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wide">{h}</th>
                 ))}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {recentTransactions.map((t) => (
-                <tr key={t.id} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-4 py-3"><code className="text-xs bg-slate-100 px-1.5 py-0.5 rounded">{t.id}</code></td>
-                  <td className="px-4 py-3 text-slate-700 max-w-xs truncate">{t.desc}</td>
-                  <td className="px-4 py-3"><Badge variant={t.type === "Revenue" ? "success" : "danger"}>{t.type}</Badge></td>
-                  <td className={`px-4 py-3 font-bold ${t.amount > 0 ? "text-emerald-700" : "text-red-700"}`}>
-                    {t.amount > 0 ? "+" : ""}${Math.abs(t.amount).toLocaleString()}
+              {recentEntries.length > 0 ? recentEntries.map((entry) => (
+                <tr key={entry.id} className="hover:bg-slate-50 transition-colors">
+                  <td className="px-4 py-3"><code className="text-xs bg-slate-100 px-1.5 py-0.5 rounded">{entry.id.slice(0, 8)}…</code></td>
+                  <td className="px-4 py-3 text-slate-700 max-w-xs truncate">{entry.description}</td>
+                  <td className="px-4 py-3">
+                    <Badge variant={entry.type === "INVOICING" ? "success" : entry.type === "PAYROLL" ? "warning" : "primary"}>
+                      {entry.type}
+                    </Badge>
                   </td>
-                  <td className="px-4 py-3 text-slate-500">{t.date}</td>
-                  <td className="px-4 py-3"><Badge dot variant={t.status === "cleared" ? "success" : "warning"}>{t.status}</Badge></td>
+                  <td className="px-4 py-3 font-bold text-slate-800">
+                    ${(entry.totalDebit ?? 0).toLocaleString()}
+                  </td>
+                  <td className="px-4 py-3 text-slate-500">
+                    {new Date(entry.date).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                  </td>
+                  <td className="px-4 py-3">
+                    <Badge dot variant={entry.status === "POSTED" ? "success" : entry.status === "DRAFT" ? "warning" : "secondary"}>
+                      {entry.status}
+                    </Badge>
+                  </td>
                 </tr>
-              ))}
+              )) : (
+                <tr>
+                  <td colSpan={6} className="px-4 py-8 text-center text-sm text-slate-400">No journal entries found</td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>

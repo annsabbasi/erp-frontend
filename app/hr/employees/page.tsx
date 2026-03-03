@@ -6,61 +6,66 @@ import PageHeader from "@/components/shared/PageHeader";
 import Badge from "@/components/shared/Badge";
 import DataTable, { type Column } from "@/components/shared/DataTable";
 import StatCard from "@/components/shared/StatCard";
+import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
+import { ErrorState } from "@/components/shared/ErrorState";
 import { Users, UserCheck, Building2 } from "lucide-react";
+import { useEmployees } from "@/lib/hooks/use-employees";
+import type { Employee } from "@/lib/api/types";
 
-type Employee = {
-  id: string;
-  name: string;
-  employeeId: string;
-  department: string;
-  position: string;
-  email: string;
-  phone: string;
-  joinDate: string;
-  salary: string;
-  status: "active" | "on-leave" | "terminated";
-};
+function statusLabel(status: Employee["status"]): string {
+  switch (status) {
+    case "ACTIVE":
+      return "active";
+    case "ON_LEAVE":
+      return "on leave";
+    case "INACTIVE":
+      return "inactive";
+    case "TERMINATED":
+      return "terminated";
+  }
+}
 
-const employees: Employee[] = [
-  { id: "1", name: "Sarah Johnson", employeeId: "EMP001", department: "Human Resources", position: "HR Manager", email: "sarah.johnson@erp.com", phone: "+1 555-0101", joinDate: "2022-01-15", salary: "$6,200", status: "active" },
-  { id: "2", name: "Mike Chen", employeeId: "EMP002", department: "Finance", position: "Chief Accountant", email: "mike.chen@erp.com", phone: "+1 555-0102", joinDate: "2021-08-22", salary: "$7,800", status: "active" },
-  { id: "3", name: "Emily Davis", employeeId: "EMP003", department: "Finance", position: "Finance Officer", email: "emily.davis@erp.com", phone: "+1 555-0103", joinDate: "2022-03-10", salary: "$7,200", status: "active" },
-  { id: "4", name: "Alex Thompson", employeeId: "EMP004", department: "Sales", position: "Revenue Manager", email: "alex.t@erp.com", phone: "+1 555-0104", joinDate: "2021-11-05", salary: "$8,500", status: "active" },
-  { id: "5", name: "James Wilson", employeeId: "EMP005", department: "Human Resources", position: "HR Associate", email: "james.w@erp.com", phone: "+1 555-0105", joinDate: "2023-04-18", salary: "$4,200", status: "on-leave" },
-  { id: "6", name: "Linda Martinez", employeeId: "EMP006", department: "Finance", position: "Junior Accountant", email: "linda.m@erp.com", phone: "+1 555-0106", joinDate: "2023-07-20", salary: "$4,800", status: "active" },
-  { id: "7", name: "Robert Brown", employeeId: "EMP007", department: "Finance", position: "Finance Analyst", email: "robert.b@erp.com", phone: "+1 555-0107", joinDate: "2022-09-12", salary: "$5,600", status: "active" },
-  { id: "8", name: "Jennifer Lee", employeeId: "EMP008", department: "Human Resources", position: "Recruiter", email: "jen.lee@erp.com", phone: "+1 555-0108", joinDate: "2023-02-28", salary: "$4,500", status: "active" },
-  { id: "9", name: "David Kim", employeeId: "EMP009", department: "Sales", position: "Sales Manager", email: "david.k@erp.com", phone: "+1 555-0109", joinDate: "2022-06-15", salary: "$6,800", status: "active" },
-  { id: "10", name: "Maria Garcia", employeeId: "EMP010", department: "Finance", position: "Accountant", email: "maria.g@erp.com", phone: "+1 555-0110", joinDate: "2023-10-01", salary: "$5,200", status: "active" },
-  { id: "11", name: "Nathan Park", employeeId: "EMP011", department: "Finance", position: "Junior Accountant", email: "nathan.p@erp.com", phone: "+1 555-0111", joinDate: "2026-02-15", salary: "$4,200", status: "active" },
-  { id: "12", name: "Sophia Rivera", employeeId: "EMP012", department: "Sales", position: "Sales Executive", email: "sophia.r@erp.com", phone: "+1 555-0112", joinDate: "2026-02-10", salary: "$4,600", status: "active" },
-];
+function statusVariant(status: Employee["status"]): "success" | "warning" | "danger" | "secondary" {
+  switch (status) {
+    case "ACTIVE":
+      return "success";
+    case "ON_LEAVE":
+      return "warning";
+    case "TERMINATED":
+      return "danger";
+    default:
+      return "secondary";
+  }
+}
 
 const columns: Column<Employee>[] = [
   {
-    key: "name",
+    key: "firstName",
     header: "Employee",
     sortable: true,
     render: (_, row) => (
-      <Link href={`/hr/employees/manage`} className="flex items-center gap-2.5 hover:text-indigo-600">
+      <Link href="/hr/employees/manage" className="flex items-center gap-2.5 hover:text-indigo-600">
         <div className="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-700 text-xs font-semibold">
-          {row.name.split(" ").map((n) => n[0]).join("")}
+          {`${row.firstName[0]}${row.lastName[0]}`.toUpperCase()}
         </div>
         <div>
-          <p className="text-sm font-medium text-slate-800">{row.name}</p>
-          <p className="text-xs text-slate-400">{row.employeeId}</p>
+          <p className="text-sm font-medium text-slate-800">{`${row.firstName} ${row.lastName}`}</p>
+          <p className="text-xs text-slate-400">{row.employeeCode}</p>
         </div>
       </Link>
     ),
   },
-  { key: "department", header: "Department", sortable: true },
-  { key: "position", header: "Position", sortable: true },
+  {
+    key: "department",
+    header: "Department",
+    sortable: true,
+    render: (_, row) => <span>{row.department?.name ?? "—"}</span>,
+  },
   {
     key: "email",
     header: "Email",
     render: (v) => <span className="text-xs text-slate-500">{String(v)}</span>,
   },
-  { key: "salary", header: "Salary", sortable: true },
   {
     key: "joinDate",
     header: "Join Date",
@@ -70,18 +75,23 @@ const columns: Column<Employee>[] = [
   {
     key: "status",
     header: "Status",
-    render: (v) => (
-      <Badge dot variant={v === "active" ? "success" : v === "on-leave" ? "warning" : "danger"}>
-        {String(v)}
+    render: (_, row) => (
+      <Badge dot variant={statusVariant(row.status)}>
+        {statusLabel(row.status)}
       </Badge>
     ),
   },
 ];
 
 export default function EmployeesPage() {
-  const active = employees.filter((e) => e.status === "active").length;
-  const onLeave = employees.filter((e) => e.status === "on-leave").length;
-  const depts = new Set(employees.map((e) => e.department)).size;
+  const { data, isLoading, error, refetch } = useEmployees();
+  const items = data?.data ?? [];
+
+  if (isLoading) return <LoadingSpinner fullPage />;
+  if (error) return <ErrorState onRetry={refetch} />;
+
+  const active = items.filter((e) => e.status === "ACTIVE").length;
+  const depts = new Set(items.map((e) => e.departmentId)).size;
 
   return (
     <div>
@@ -104,12 +114,12 @@ export default function EmployeesPage() {
       />
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
-        <StatCard title="Total Employees" value={employees.length} icon={Users} variant="primary" />
+        <StatCard title="Total Employees" value={data?.meta?.total ?? items.length} icon={Users} variant="primary" />
         <StatCard title="Active" value={active} icon={UserCheck} variant="success" />
         <StatCard title="Departments" value={depts} icon={Building2} variant="info" />
       </div>
 
-      <DataTable data={employees} columns={columns} searchPlaceholder="Search employees..." pageSize={10} />
+      <DataTable data={items} columns={columns} searchPlaceholder="Search employees..." pageSize={10} />
     </div>
   );
 }

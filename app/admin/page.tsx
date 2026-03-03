@@ -4,9 +4,13 @@ import { Users, Activity, Shield, Server, TrendingUp, CheckCircle2, AlertTriangl
 import StatCard from "@/components/shared/StatCard";
 import PageHeader from "@/components/shared/PageHeader";
 import Badge from "@/components/shared/Badge";
-import { ChartCard, ERPAreaChart, ERPBarChart } from "@/components/shared/Charts";
+import { ChartCard, ERPAreaChart } from "@/components/shared/Charts";
+import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
+import { ErrorState } from "@/components/shared/ErrorState";
 import { formatDateTime } from "@/lib/utils";
 import Link from "next/link";
+import { useUsers } from "@/lib/hooks/use-users";
+import { useActivityLogs, useActivityStats } from "@/lib/hooks/use-activity-logs";
 
 const activityData = [
   { month: "Sep", users: 180, logins: 420 },
@@ -26,15 +30,6 @@ const moduleUsage = [
   { name: "Reports", usage: 48 },
 ];
 
-const recentLogs = [
-  { id: 1, user: "Sarah Johnson", action: "Created new employee record", role: "HR", time: "2026-02-27T10:32:00", status: "success" },
-  { id: 2, user: "Mike Chen", action: "Generated monthly payroll", role: "Accountant", time: "2026-02-27T10:15:00", status: "success" },
-  { id: 3, user: "Emily Davis", action: "Updated budget allocation", role: "Finance Officer", time: "2026-02-27T09:58:00", status: "warning" },
-  { id: 4, user: "Alex Thompson", action: "Login from new device", role: "Revenue Manager", time: "2026-02-27T09:40:00", status: "info" },
-  { id: 5, user: "System", action: "Automated backup completed", role: "System", time: "2026-02-27T09:00:00", status: "success" },
-  { id: 6, user: "James Wilson", action: "Failed login attempt (3x)", role: "HR", time: "2026-02-27T08:45:00", status: "danger" },
-];
-
 const systemHealth = [
   { service: "API Server", status: "Operational", uptime: "99.9%", color: "success" as const },
   { service: "Database", status: "Operational", uptime: "100%", color: "success" as const },
@@ -43,6 +38,21 @@ const systemHealth = [
 ];
 
 export default function AdminDashboard() {
+  const { data: usersData, isLoading: usersLoading, error: usersError, refetch: refetchUsers } = useUsers();
+  const { data: activityStats, isLoading: statsLoading, error: statsError, refetch: refetchStats } = useActivityStats();
+  const { data: logsData, isLoading: logsLoading, error: logsError, refetch: refetchLogs } = useActivityLogs();
+
+  const isLoading = usersLoading || statsLoading || logsLoading;
+  const error = usersError || statsError || logsError;
+
+  if (isLoading) return <LoadingSpinner fullPage />;
+  if (error) return <ErrorState onRetry={() => { refetchUsers(); refetchStats(); refetchLogs(); }} />;
+
+  const totalUsers = usersData?.meta?.total ?? 0;
+  const activeUsers = (usersData?.data ?? []).filter((u) => u.isActive).length;
+  const totalActions = activityStats?.totalActions ?? 0;
+  const recentLogs = (logsData?.data ?? []).slice(0, 6);
+
   return (
     <div>
       <PageHeader
@@ -66,8 +76,8 @@ export default function AdminDashboard() {
 
       {/* Stats */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
-        <StatCard title="Total Users" value="248" icon={Users} change={4.2} variant="primary" description="Across all roles" />
-        <StatCard title="Active Sessions" value="183" icon={Activity} change={8.1} variant="success" description="Currently online" />
+        <StatCard title="Total Users" value={String(totalUsers)} icon={Users} change={4.2} variant="primary" description="Across all roles" />
+        <StatCard title="Active Users" value={String(activeUsers)} icon={Activity} change={8.1} variant="success" description="Currently active" />
         <StatCard title="Active Modules" value="12" icon={Shield} change={0} variant="info" description="All modules running" />
         <StatCard title="System Uptime" value="99.9%" icon={Server} change={0.1} variant="default" description="Last 30 days" />
       </div>
@@ -116,35 +126,35 @@ export default function AdminDashboard() {
           <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
             <div>
               <h3 className="text-sm font-semibold text-slate-800">Recent Activity</h3>
-              <p className="text-xs text-slate-400 mt-0.5">Latest system events</p>
+              <p className="text-xs text-slate-400 mt-0.5">Latest system events ({totalActions} total actions)</p>
             </div>
             <Link href="/admin/activity-logs" className="text-xs text-indigo-600 hover:text-indigo-700 font-medium">
               View all
             </Link>
           </div>
           <div className="divide-y divide-slate-50">
-            {recentLogs.map((log) => (
+            {recentLogs.length > 0 ? recentLogs.map((log) => (
               <div key={log.id} className="flex items-start gap-3 px-5 py-3 hover:bg-slate-50 transition-colors">
-                <div className={`mt-0.5 w-2 h-2 rounded-full shrink-0 ${
-                  log.status === "success" ? "bg-emerald-500" :
-                  log.status === "warning" ? "bg-amber-500" :
-                  log.status === "danger" ? "bg-red-500" : "bg-blue-500"
-                }`} />
+                <div className="mt-0.5 w-2 h-2 rounded-full shrink-0 bg-indigo-500" />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-slate-700 truncate">{log.user}</span>
-                    <Badge variant={log.role === "System" ? "secondary" : "primary"} className="shrink-0">
-                      {log.role}
+                    <span className="text-sm font-medium text-slate-700 truncate">
+                      {log.user ? `${log.user.firstName} ${log.user.lastName}` : "System"}
+                    </span>
+                    <Badge variant={log.user?.role ? "primary" : "secondary"} className="shrink-0">
+                      {log.user?.role ?? "System"}
                     </Badge>
                   </div>
-                  <p className="text-xs text-slate-500 mt-0.5">{log.action}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">{log.action} — {log.entity}</p>
                 </div>
                 <span className="text-xs text-slate-400 shrink-0 flex items-center gap-1">
                   <Clock className="w-3 h-3" />
-                  {formatDateTime(log.time).split(",")[1]?.trim()}
+                  {formatDateTime(log.createdAt).split(",")[1]?.trim()}
                 </span>
               </div>
-            ))}
+            )) : (
+              <div className="px-5 py-8 text-center text-sm text-slate-400">No recent activity</div>
+            )}
           </div>
         </div>
 

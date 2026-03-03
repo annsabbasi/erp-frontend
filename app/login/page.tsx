@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
 import { TrendingUp, Eye, EyeOff, Shield, BarChart3, Users, DollarSign, ChevronRight } from "lucide-react";
+import { useAuth } from "@/lib/context/auth-context";
 
 const roles = [
   { value: "admin",            label: "Administrator",   icon: Shield,    desc: "System & user management",  redirect: "/admin",            color: "bg-violet-500" },
@@ -13,7 +13,7 @@ const roles = [
 ];
 
 export default function LoginPage() {
-  const router = useRouter();
+  const { login } = useAuth();
   const [email,        setEmail]        = useState("");
   const [password,     setPassword]     = useState("");
   const [role,         setRole]         = useState("admin");
@@ -26,8 +26,15 @@ export default function LoginPage() {
     if (!email || !password) { setError("Please enter your email and password."); return; }
     setError("");
     setLoading(true);
-    await new Promise((r) => setTimeout(r, 900));
-    router.push(roles.find((r) => r.value === role)?.redirect ?? "/admin");
+    try {
+      await login({ email, password });
+      // redirect handled by auth context
+    } catch (err: unknown) {
+      const axiosErr = err as { response?: { data?: { message?: string | string[] } } };
+      const msg = axiosErr.response?.data?.message;
+      setError(Array.isArray(msg) ? msg[0] : (msg ?? 'Invalid credentials'));
+      setLoading(false);
+    }
   }
 
   const selected = roles.find((r) => r.value === role)!;

@@ -4,7 +4,8 @@ import { useState } from "react";
 import { Menu, Bell, Search, ChevronDown, Settings, LogOut, User } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { cn } from "@/lib/utils";
+import { cn, getInitials } from "@/lib/utils";
+import { useAuth } from "@/lib/context/auth-context";
 
 interface HeaderProps {
   onMenuClick: () => void;
@@ -26,13 +27,12 @@ const avatarColors: Record<string, string> = {
   "finance-officer":"bg-indigo-600",
   "revenue-manager":"bg-amber-600",
 };
-const initials: Record<string, string>  = { admin: "AD", hr: "HR", accountant: "AC", "finance-officer": "FO", "revenue-manager": "RM" };
-const names:    Record<string, string>  = { admin: "System Admin", hr: "HR Manager", accountant: "J. Smith", "finance-officer": "Finance Officer", "revenue-manager": "Rev. Manager" };
 
 export default function Header({ onMenuClick, role, roleLabel }: HeaderProps) {
   const pathname = usePathname();
   const [showNotif,  setShowNotif]  = useState(false);
   const [showUser,   setShowUser]   = useState(false);
+  const { user, logout } = useAuth();
 
   const unread = notifications.filter((n) => !n.read).length;
 
@@ -43,8 +43,9 @@ export default function Header({ onMenuClick, role, roleLabel }: HeaderProps) {
   }));
 
   const avColor  = avatarColors[role] ?? "bg-indigo-600";
-  const avInit   = initials[role]     ?? "??";
-  const userName = names[role]        ?? roleLabel;
+  const userName = user ? `${user.firstName} ${user.lastName}` : roleLabel;
+  const avInit   = getInitials(userName);
+  const userEmail = user?.email ?? `${role}@financeerp.com`;
 
   const closeAll = () => { setShowNotif(false); setShowUser(false); };
 
@@ -153,7 +154,7 @@ export default function Header({ onMenuClick, role, roleLabel }: HeaderProps) {
                     </div>
                     <div className="min-w-0">
                       <p className="text-sm font-bold text-slate-800 truncate">{userName}</p>
-                      <p className="text-xs text-slate-400 truncate">{role}@financeerp.com</p>
+                      <p className="text-xs text-slate-400 truncate">{userEmail}</p>
                     </div>
                   </div>
                 </div>
@@ -166,9 +167,12 @@ export default function Header({ onMenuClick, role, roleLabel }: HeaderProps) {
                   </button>
                 </div>
                 <div className="border-t border-slate-100 py-1">
-                  <Link href="/login" className="flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors">
+                  <button
+                    onClick={() => { closeAll(); logout(); }}
+                    className="w-full flex items-center gap-3 px-4 py-2.5 text-sm text-red-600 hover:bg-red-50 transition-colors"
+                  >
                     <LogOut className="w-4 h-4" /> Sign Out
-                  </Link>
+                  </button>
                 </div>
               </div>
             )}

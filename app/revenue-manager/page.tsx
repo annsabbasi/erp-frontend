@@ -1,48 +1,53 @@
 "use client";
 
-import { TrendingUp, DollarSign, ShoppingCart, RefreshCw, Receipt, Tag } from "lucide-react";
+import { TrendingUp, DollarSign, ShoppingCart, RefreshCw, Receipt } from "lucide-react";
 import StatCard from "@/components/shared/StatCard";
 import PageHeader from "@/components/shared/PageHeader";
 import Badge from "@/components/shared/Badge";
-import { ChartCard, ERPAreaChart, ERPBarChart, ERPPieChart } from "@/components/shared/Charts";
+import { ChartCard, ERPAreaChart, ERPPieChart } from "@/components/shared/Charts";
+import { LoadingSpinner } from "@/components/shared/LoadingSpinner";
+import { ErrorState } from "@/components/shared/ErrorState";
 import Link from "next/link";
-
-const revenueTrend = [
-  { month: "Sep", services: 120000, products: 40000, subscriptions: 18000 },
-  { month: "Oct", services: 128000, products: 44000, subscriptions: 20000 },
-  { month: "Nov", services: 138000, products: 48000, subscriptions: 19000 },
-  { month: "Dec", services: 145000, products: 52000, subscriptions: 23000 },
-  { month: "Jan", services: 140000, products: 46000, subscriptions: 29000 },
-  { month: "Feb", services: 152000, products: 48000, subscriptions: 28000 },
-];
-
-const topClients = [
-  { client: "GlobalCorp Ltd.", revenue: 48500, growth: 12.4 },
-  { client: "Innovation Labs", revenue: 42000, growth: 8.2 },
-  { client: "TechVentures Inc.", revenue: 38600, growth: 22.1 },
-  { client: "StartupXYZ", revenue: 24500, growth: -3.4 },
-  { client: "Acme Corp.", revenue: 18200, growth: 5.8 },
-];
-
-const revenueBySource = [
-  { name: "Service Revenue", value: 152000, color: "#4f46e5" },
-  { name: "Product Sales", value: 48000, color: "#10b981" },
-  { name: "Subscriptions", value: 28000, color: "#f59e0b" },
-];
-
-const recentInvoices = [
-  { id: "INV-042", client: "GlobalCorp Ltd.", amount: 24500, date: "Feb 27", status: "paid" },
-  { id: "INV-053", client: "StartupXYZ", amount: 15800, date: "Mar 3", status: "pending" },
-  { id: "INV-056", client: "Innovation Labs", amount: 42000, date: "Mar 20", status: "sent" },
-  { id: "INV-057", client: "Acme Corp.", amount: 9800, date: "Mar 25", status: "draft" },
-];
+import { useRevenueStats } from "@/lib/hooks/use-revenue";
+import { useInvoiceStats, useInvoices } from "@/lib/hooks/use-invoices";
 
 export default function RevenueManagerDashboard() {
-  const currentMonth = revenueTrend[revenueTrend.length - 1];
-  const totalRevenue = currentMonth.services + currentMonth.products + currentMonth.subscriptions;
-  const prevMonth = revenueTrend[revenueTrend.length - 2];
-  const prevTotal = prevMonth.services + prevMonth.products + prevMonth.subscriptions;
-  const growth = (((totalRevenue - prevTotal) / prevTotal) * 100).toFixed(1);
+  const { data: revenueStats, isLoading: revenueLoading, error: revenueError, refetch: refetchRevenue } = useRevenueStats();
+  const { data: invoiceStats, isLoading: invoiceStatsLoading, error: invoiceStatsError, refetch: refetchInvoiceStats } = useInvoiceStats();
+  const { data: invoicesData, isLoading: invoicesLoading, error: invoicesError, refetch: refetchInvoices } = useInvoices();
+
+  const isLoading = revenueLoading || invoiceStatsLoading || invoicesLoading;
+  const error = revenueError || invoiceStatsError || invoicesError;
+
+  if (isLoading) return <LoadingSpinner fullPage />;
+  if (error) return <ErrorState onRetry={() => { refetchRevenue(); refetchInvoiceStats(); refetchInvoices(); }} />;
+
+  const totalRevenue = revenueStats?.totalRevenue ?? 0;
+  const monthlyRevenue = revenueStats?.monthlyRevenue ?? 0;
+  const growth = revenueStats?.growth ?? 0;
+  const outstanding = invoiceStats?.outstanding ?? 0;
+  const overdueAmount = invoiceStats?.overdueAmount ?? 0;
+
+  // Build monthly trend chart data from revenueStats.monthlyTrend
+  const monthlyTrend = revenueStats?.monthlyTrend ?? [];
+  const trendChartData = monthlyTrend.map((t) => ({
+    month: t.month,
+    revenue: t.amount,
+  }));
+
+  // Build pie chart from bySource
+  const bySource = revenueStats?.bySource ?? {};
+  const sourceColors = ["#4f46e5", "#10b981", "#f59e0b", "#3b82f6", "#8b5cf6", "#ef4444"];
+  const revenueBySource = Object.entries(bySource).map(([name, value], i) => ({
+    name,
+    value: value as number,
+    color: sourceColors[i % sourceColors.length],
+  }));
+
+  // Recent invoices: last 4
+  const recentInvoices = (invoicesData?.data ?? [])
+    .sort((a, b) => new Date(b.issueDate).getTime() - new Date(a.issueDate).getTime())
+    .slice(0, 4);
 
   return (
     <div>
@@ -57,56 +62,77 @@ export default function RevenueManagerDashboard() {
       />
 
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-6">
-        <StatCard title="Total Revenue (Feb)" value={`$${(totalRevenue / 1000).toFixed(0)}k`} icon={DollarSign} change={parseFloat(growth)} variant="primary" />
-        <StatCard title="Service Revenue" value="$152,000" icon={TrendingUp} change={8.6} variant="success" />
-        <StatCard title="Subscriptions MRR" value="$28,000" icon={RefreshCw} change={-3.4} variant="warning" description="Monthly Recurring Revenue" />
-        <StatCard title="Outstanding Invoices" value="$67,800" icon={ShoppingCart} change={12.1} variant="danger" description="3 invoices pending" />
+        <StatCard
+          title="Total Revenue"
+          value={`$${(totalRevenue / 1000).toFixed(0)}k`}
+          icon={DollarSign}
+          change={growth}
+          variant="primary"
+        />
+        <StatCard
+          title="Monthly Revenue"
+          value={`$${(monthlyRevenue / 1000).toFixed(0)}k`}
+          icon={TrendingUp}
+          change={growth}
+          variant="success"
+        />
+        <StatCard
+          title="Outstanding Invoices"
+          value={`$${(outstanding / 1000).toFixed(0)}k`}
+          icon={ShoppingCart}
+          change={12.1}
+          variant="warning"
+          description={`${invoiceStats?.sent ?? 0} invoices sent`}
+        />
+        <StatCard
+          title="Overdue Amount"
+          value={`$${(overdueAmount / 1000).toFixed(0)}k`}
+          icon={RefreshCw}
+          change={-3.4}
+          variant="danger"
+          description={`${invoiceStats?.overdue ?? 0} overdue`}
+        />
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-4 mb-6">
-        <ChartCard title="Revenue by Stream (6 Months)" className="xl:col-span-2" description="Service, Product & Subscription revenue">
+        <ChartCard title="Monthly Revenue Trend" className="xl:col-span-2" description="Revenue over time by month">
           <ERPAreaChart
-            data={revenueTrend}
+            data={trendChartData.length > 0 ? trendChartData : [{ month: "No data", revenue: 0 }]}
             dataKeys={[
-              { key: "services", name: "Services", color: "#4f46e5" },
-              { key: "products", name: "Products", color: "#10b981" },
-              { key: "subscriptions", name: "Subscriptions", color: "#f59e0b" },
+              { key: "revenue", name: "Revenue", color: "#4f46e5" },
             ]}
             xKey="month"
             formatY={(v) => `$${(v / 1000).toFixed(0)}k`}
           />
         </ChartCard>
 
-        <ChartCard title="Revenue Mix (Feb)" description="By source">
-          <ERPPieChart data={revenueBySource} formatValue={(v) => `$${v.toLocaleString()}`} />
+        <ChartCard title="Revenue by Source" description="Breakdown by income source">
+          <ERPPieChart
+            data={revenueBySource.length > 0 ? revenueBySource : [{ name: "No data", value: 1, color: "#e2e8f0" }]}
+            formatValue={(v) => `$${v.toLocaleString()}`}
+          />
         </ChartCard>
       </div>
 
       <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-        {/* Top Clients */}
+        {/* Invoice Summary */}
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-            <h3 className="text-sm font-semibold text-slate-800">Top Clients (Feb)</h3>
-            <Link href="/revenue-manager/revenue-tracking/sales-reports" className="text-xs text-indigo-600 hover:text-indigo-700 font-medium">Full Report</Link>
+            <h3 className="text-sm font-semibold text-slate-800">Invoice Summary</h3>
+            <Link href="/revenue-manager/invoicing" className="text-xs text-indigo-600 hover:text-indigo-700 font-medium">View all</Link>
           </div>
-          <div className="divide-y divide-slate-50">
-            {topClients.map((c, i) => (
-              <div key={c.client} className="flex items-center px-5 py-3">
-                <span className="w-6 text-xs text-slate-400 font-medium">{i + 1}</span>
-                <div className="flex-1 min-w-0 ml-2">
-                  <p className="text-sm font-medium text-slate-700 truncate">{c.client}</p>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <div className="h-1.5 bg-slate-100 rounded-full w-24 overflow-hidden">
-                      <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${(c.revenue / topClients[0].revenue) * 100}%` }} />
-                    </div>
-                  </div>
-                </div>
-                <div className="text-right ml-3">
-                  <p className="text-sm font-bold text-slate-800">${c.revenue.toLocaleString()}</p>
-                  <p className={`text-xs ${c.growth >= 0 ? "text-emerald-600" : "text-red-600"}`}>
-                    {c.growth >= 0 ? "+" : ""}{c.growth}%
-                  </p>
-                </div>
+          <div className="p-5 grid grid-cols-2 gap-4">
+            {[
+              { label: "Total Invoices", value: invoiceStats?.total ?? 0, color: "text-slate-800" },
+              { label: "Draft", value: invoiceStats?.draft ?? 0, color: "text-slate-500" },
+              { label: "Sent", value: invoiceStats?.sent ?? 0, color: "text-blue-600" },
+              { label: "Paid", value: invoiceStats?.paid ?? 0, color: "text-emerald-600" },
+              { label: "Overdue", value: invoiceStats?.overdue ?? 0, color: "text-red-600" },
+              { label: "Total Billed", value: `$${((invoiceStats?.totalRevenue ?? 0) / 1000).toFixed(0)}k`, color: "text-indigo-600" },
+            ].map(({ label, value, color }) => (
+              <div key={label} className="bg-slate-50 rounded-xl p-3">
+                <p className="text-xs text-slate-500 mb-1">{label}</p>
+                <p className={`text-lg font-bold ${color}`}>{value}</p>
               </div>
             ))}
           </div>
@@ -119,25 +145,37 @@ export default function RevenueManagerDashboard() {
             <Link href="/revenue-manager/invoicing" className="text-xs text-indigo-600 hover:text-indigo-700 font-medium">View all</Link>
           </div>
           <div className="divide-y divide-slate-50">
-            {recentInvoices.map((inv) => (
+            {recentInvoices.length > 0 ? recentInvoices.map((inv) => (
               <div key={inv.id} className="flex items-center justify-between px-5 py-3">
                 <div className="flex items-center gap-2.5">
                   <div className="w-8 h-8 bg-indigo-50 rounded-lg flex items-center justify-center">
                     <Receipt className="w-4 h-4 text-indigo-600" />
                   </div>
                   <div>
-                    <p className="text-sm font-medium text-slate-700">{inv.client}</p>
-                    <p className="text-xs text-slate-400">{inv.id} · {inv.date}</p>
+                    <p className="text-sm font-medium text-slate-700">{inv.client?.name ?? "—"}</p>
+                    <p className="text-xs text-slate-400">
+                      {inv.invoiceNumber} ·{" "}
+                      {new Date(inv.issueDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                    </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className="text-sm font-bold text-slate-800">${inv.amount.toLocaleString()}</span>
-                  <Badge dot variant={inv.status === "paid" ? "success" : inv.status === "pending" ? "warning" : inv.status === "sent" ? "info" : "secondary"}>
-                    {inv.status}
+                  <span className="text-sm font-bold text-slate-800">${inv.totalAmount.toLocaleString()}</span>
+                  <Badge
+                    dot
+                    variant={
+                      inv.status === "PAID" ? "success" :
+                      inv.status === "OVERDUE" ? "danger" :
+                      inv.status === "SENT" ? "info" : "secondary"
+                    }
+                  >
+                    {inv.status.toLowerCase()}
                   </Badge>
                 </div>
               </div>
-            ))}
+            )) : (
+              <div className="px-5 py-8 text-center text-sm text-slate-400">No invoices found</div>
+            )}
           </div>
           <div className="px-5 py-3 border-t border-slate-100">
             <Link href="/revenue-manager/invoicing" className="w-full flex items-center justify-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 font-medium py-1">
